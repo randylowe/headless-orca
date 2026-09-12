@@ -97,7 +97,12 @@ docker buildx inspect --bootstrap multiarch
 # multi-arch images are the same bits — with "latest", each build re-resolves
 # independently, and a release landing mid-script means publishing code that
 # was never scanned.
-docker buildx build --platform linux/amd64 \
+# --pull refreshes the base image (debian:bookworm-slim is a moving security
+# target — the tag is rebuilt by Debian as point releases land). Without it
+# the builder silently reuses whatever base layers are cached locally. Cheap
+# when unchanged: just a manifest check; layers only re-pull when Debian
+# actually shipped something.
+docker buildx build --pull --platform linux/amd64 \
   --build-arg ORCA_VERSION="$ORCA_VERSION" \
   --build-arg WRAPPER_REV="$WRAPPER_REV" \
   -t headless-orca:scan \
@@ -128,7 +133,7 @@ if [ "$LOCAL" = 1 ]; then
   exit 0
 fi
 
-docker buildx build --platform linux/amd64,linux/arm64 \
+docker buildx build --pull --platform linux/amd64,linux/arm64 \
   --build-arg ORCA_VERSION="$ORCA_VERSION" \
   --build-arg WRAPPER_REV="$WRAPPER_REV" \
   -t "randylowe/headless-orca:${IMAGE_TAG}" \

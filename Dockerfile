@@ -175,7 +175,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # binary's actual NEEDED list), libappindicator3-1 (doesn't exist as a real
 # package in bookworm — it's a virtual name provided by
 # libayatana-appindicator3-1 — and is tray-icon-only anyway, irrelevant headless).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `upgrade` applies Debian security updates to everything the base image
+# already ships (libpcre2-8-0, libc, etc.) — the install list below never
+# touches those, and bookworm-slim only carries packages current as of its
+# own rebuild. Without this, known-fixed CVEs fail the Trivy gate and block
+# every publish. Pairs with `--pull` in build.sh (fresh base) — neither alone
+# closes the gap: advisories published after Debian's last bookworm-slim
+# rebuild only reach the image through the security repo, via upgrade.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \

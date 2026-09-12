@@ -82,3 +82,8 @@ changelog heading, git tag, and Docker tag are one identifier.
   the pushed multi-arch build, instead of each build independently
   re-resolving `latest` — previously a release landing mid-publish could
   ship code that was never scanned.
+- Base image and packages now refresh on every build: `build.sh` passes
+  `--pull` and the Dockerfile runs `apt-get upgrade`, so Debian security
+  updates reach published images instead of failing the scan gate (first
+  case: two HIGH libpcre2-8-0 CVEs, fixed in `10.42-1+deb12u1`, which the
+  base image alone did not carry).
