@@ -386,11 +386,14 @@ Check which case you're in with `id` in an Orca terminal.
 Paired terminals get a full shell toolchain baked into the image:
 
 - **zsh** is the `orca` login shell, with **oh-my-zsh** (baked at
-  `/opt/oh-my-zsh`) and **scm_breeze** (baked at `/opt/scm_breeze`). Both are
-  wired into `~/.zshrc` by the entrypoint on first boot — only if no
-  `.zshrc` exists, so your own customizations always win. They live under
-  `/opt` instead of `$HOME` on purpose: `/home/orca` is a volume, and image
-  content there would be shadowed by existing volume data.
+  `/opt/oh-my-zsh`) and **scm_breeze** (seeded at `/opt/scm_breeze`, copied
+  into `~/.scm_breeze` on first boot — upstream's expected layout, so
+  `cd ~/.scm_breeze && git pull` self-updates it). The shortcut definitions
+  live in `~/.git.scmbrc` — edit that file to change them. oh-my-zsh and the
+  `~/.zshrc` wiring happen on first boot — only if no `.zshrc` exists, so
+  your own customizations always win. Shell bits live under `/opt` instead
+  of `$HOME` on purpose: `/home/orca` is a volume, and image content there
+  would be shadowed by existing volume data.
 - **git** comes from `bookworm-backports` when Debian publishes a newer
   version there, falling back to bookworm's stable git otherwise. Every
   build echoes `git --version` so you know exactly what shipped.

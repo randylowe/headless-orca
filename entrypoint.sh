@@ -8,19 +8,42 @@ set -e
 # pinned in the Dockerfile ENV.
 export HOME="${HOME:-${ORCA_HOME:-/home/orca}}"
 
-# First-boot shell wiring: oh-my-zsh (/opt/oh-my-zsh) and scm_breeze
-# (/opt/scm_breeze) are baked system-wide, but their dotfiles live in $HOME —
-# a volume that may predate this image. Create them only when absent so user
-# customizations always win, and only when HOME is writable (a UID override
-# without the volume chown must not crash the container here).
+# First-boot shell wiring: oh-my-zsh (/opt/oh-my-zsh) and scm_breeze are
+# baked system-wide, but their dotfiles live in $HOME — a volume that may
+# predate this image. Create them only when absent so user customizations
+# always win, and only when HOME is writable (a UID override without the
+# volume chown must not crash the container here).
+#
+# scm_breeze specifically gets a full copy in $HOME/.scm_breeze (upstream's
+# expected layout): it sources relative to its own directory and needs it
+# writable for self-update (`cd ~/.scm_breeze && git pull`). The baked
+# /opt/scm_breeze clone is the seed for that copy.
 if [ ! -e "${HOME}/.zshrc" ] && [ -w "${HOME}" ]; then
   cat > "${HOME}/.zshrc" <<'ZSHRC'
 export ZSH="/opt/oh-my-zsh"
 ZSH_THEME="robbyrussell"
 plugins=(git)
 source "$ZSH/oh-my-zsh.sh"
-[ -f /opt/scm_breeze/scm_breeze.sh ] && source /opt/scm_breeze/scm_breeze.sh
+[ -f "${HOME}/.scm_breeze/scm_breeze.sh" ] && source "${HOME}/.scm_breeze/scm_breeze.sh"
 ZSHRC
+fi
+if [ ! -d "${HOME}/.scm_breeze" ] && [ -w "${HOME}" ] && [ -d /opt/scm_breeze ]; then
+  cp -a /opt/scm_breeze "${HOME}/.scm_breeze"
+fi
+# scm_breeze's git shortcuts only load when ~/.git.scmbrc exists — its
+# installer normally creates that (and ~/.scmbrc) from the bundled example
+# files. Seed them on first boot; without them, sourcing scm_breeze.sh
+# succeeds but loads zero shortcuts.
+if [ -d "${HOME}/.scm_breeze" ] && [ -w "${HOME}" ]; then
+  [ -e "${HOME}/.git.scmbrc" ] ||
+    cp "${HOME}/.scm_breeze/git.scmbrc.example" "${HOME}/.git.scmbrc" || true
+  [ -e "${HOME}/.scmbrc" ] ||
+    cp "${HOME}/.scm_breeze/scmbrc.example" "${HOME}/.scmbrc" || true
+fi
+# Migration: .zshrc files created by earlier images source the /opt copy,
+# which breaks under the home-directory layout — point them at $HOME instead.
+if [ -f "${HOME}/.zshrc" ]; then
+  sed -i 's|^\[ -f /opt/scm_breeze/scm_breeze.sh \] && source /opt/scm_breeze/scm_breeze.sh$|[ -f "${HOME}/.scm_breeze/scm_breeze.sh" ] \&\& source "${HOME}/.scm_breeze/scm_breeze.sh"|' "${HOME}/.zshrc" 2>/dev/null || true
 fi
 
 PORT="${ORCA_PORT:-6768}"

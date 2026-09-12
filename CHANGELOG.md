@@ -102,6 +102,14 @@ changelog heading, git tag, and Docker tag are one identifier.
   (`ALL ALL=(ALL:ALL) NOPASSWD: ALL`) instead of granting the baked `orca`
   name, which refused UIDs that have no passwd entry under `user:` overrides
   ("you do not exist in the passwd database").
+- scm_breeze is now installed into `~/.scm_breeze` — upstream's expected
+  layout — on first boot, instead of sourcing a read-only baked copy from
+  `/opt`. Its git shortcuts and self-update (`cd ~/.scm_breeze && git pull`)
+  now behave like a normal scm_breeze install, and existing `.zshrc` files
+  are migrated automatically. The `~/.git.scmbrc` and `~/.scmbrc` config
+  files are seeded from the bundled examples — scm_breeze only loads its git
+  shortcuts when `.git.scmbrc` exists, which is why sourcing alone previously
+  produced no shortcuts.
 
 ### Changed
 
