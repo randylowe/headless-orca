@@ -67,7 +67,9 @@ Don't relitigate these; they were verified once, the hard way:
   deployment** — treat it as environment-specific config, not something to
   genericize away without asking.
 - **`docker-compose.yml` is the only intended local build/run path**, and
-  `build.sh` is the only publishing path — keep both single and direct; no
+  `build.sh` is the only publishing path (`./build.sh --local` reuses the
+  publish pipeline minus Hub lookup/push/git-tag for testing on the Docker
+  host — it stays one script, one flag). Keep both single and direct; no
   templating, multiple compose profiles, or extra abstraction unless actually
   needed.
 - **Image tags follow distro-packaging style `v<orca-version>-<rev>`** (e.g.

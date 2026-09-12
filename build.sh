@@ -21,7 +21,21 @@ set -euo pipefail
 # Override either by exporting it first:
 #
 #     WRAPPER_REV=7 ./build.sh
+#
+# Usage:
+#     ./build.sh            resolve version → scan gate → multi-arch push to
+#                           Docker Hub (+ git tag on a clean tree)
+#     ./build.sh --local    same pipeline, stops after the scan: no Hub
+#                           lookup, no push, no git tag — for testing image
+#                           changes on the Docker host before publishing
 # ---------------------------------------------------------------------------
+LOCAL=0
+case "${1:-}" in
+  "") ;;
+  --local) LOCAL=1 ;;
+  *) echo "usage: build.sh [--local]" >&2; exit 1 ;;
+esac
+
 MANIFEST_URL="https://github.com/stablyai/orca/releases/latest/download/latest-linux.yml"
 TAGS_URL="https://hub.docker.com/v2/repositories/randylowe/headless-orca/tags?page_size=100&name="
 
@@ -32,25 +46,46 @@ if [ -z "${ORCA_VERSION#v}" ]; then
 fi
 
 if [ -z "${WRAPPER_REV:-}" ]; then
-  # Highest published revision for this Orca version, +1. An empty result
-  # means no such tags exist yet → revision 1 is safe (nothing to collide
-  # with). A FAILED LOOKUP ABORTS (curl -f + pipefail) rather than defaulting:
-  # silently rebuilding as -1 could overwrite an already-published tag on push.
-  # page_size=100 returns newest-first — ample for one release's revisions.
-  hub_tags="$(curl -fsSL "${TAGS_URL}${ORCA_VERSION}-")"
-  WRAPPER_REV="$(printf '%s' "$hub_tags" \
-    | grep -o "\"name\": *\"${ORCA_VERSION}-[0-9]*\"" \
-    | sed 's/.*-//' \
-    | sort -n \
-    | tail -1 || true)"
-  WRAPPER_REV="${WRAPPER_REV:-1}"
+  if [ "$LOCAL" = 1 ]; then
+    # Local-only build: nothing is pushed, so there is no tag to collide with
+    # and no reason to require Hub reachability — default to revision 1. The
+    # value only feeds the OCI label on the local image; a real publish always
+    # resolves and stamps its own.
+    WRAPPER_REV=1
+  else
+    # Highest published revision for this Orca version, +1. An empty result
+    # means no such tags exist yet → revision 1 is safe (nothing to collide
+    # with). A FAILED LOOKUP ABORTS (curl -f + pipefail) rather than defaulting:
+    # silently rebuilding as -1 could overwrite an already-published tag on push.
+    # page_size=100 returns newest-first — ample for one release's revisions.
+    hub_tags="$(curl -fsSL "${TAGS_URL}${ORCA_VERSION}-")"
+    WRAPPER_REV="$(printf '%s' "$hub_tags" \
+      | grep -o "\"name\": *\"${ORCA_VERSION}-[0-9]*\"" \
+      | sed 's/.*-//' \
+      | sort -n \
+      | tail -1 || true)"
+    WRAPPER_REV="${WRAPPER_REV:-1}"
+  fi
 fi
 
 IMAGE_TAG="${ORCA_VERSION}-${WRAPPER_REV}"
-echo "Building randylowe/headless-orca:${IMAGE_TAG} (latest will float alongside)"
+if [ "$LOCAL" = 1 ]; then
+  echo "Local build of ${ORCA_VERSION} (rev ${WRAPPER_REV} is local-only — Docker Hub untouched)"
+else
+  echo "Building randylowe/headless-orca:${IMAGE_TAG} (latest will float alongside)"
+fi
 
-docker buildx create --use --name multiarch 2>/dev/null || docker buildx use multiarch
-docker buildx inspect --bootstrap
+# Reuse the multiarch builder if it exists, create it if not. Deliberately NO
+# stderr suppression here: this used to be `create ... 2>/dev/null || use ...`,
+# which hid create's real failure and fell through to `use`, aborting with a
+# baffling `failed to find instance "multiarch"` that named everything except
+# the cause. A genuine failure (permissions on ~/.docker, disk, buildx broken)
+# should abort loudly here with its actual message.
+if ! docker buildx inspect multiarch >/dev/null 2>&1; then
+  docker buildx create --name multiarch
+fi
+docker buildx use multiarch
+docker buildx inspect --bootstrap multiarch
 
 # Build+load a single-arch image first and scan it for known-CVE OS/app
 # packages before anything gets published — build.sh previously pushed
@@ -78,6 +113,20 @@ docker run --rm \
   -v "$PWD/.trivyignore:/.trivyignore:ro" \
   aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed \
     --ignorefile /.trivyignore --exit-code 1 headless-orca:scan
+
+# --local stops here: the exact scanned bits are loaded locally and nothing
+# has touched Docker Hub. Run them via compose with a retag + --no-build —
+# compose uses the default builder, so it can't reuse this buildx cache and
+# a plain `up --build` would rebuild from scratch instead of running what
+# was just scanned.
+if [ "$LOCAL" = 1 ]; then
+  echo "Scan passed — local build ready, NOT published."
+  echo "Run the scanned bits:"
+  echo "  docker tag headless-orca:scan headless-orca"
+  echo "  docker compose up -d --no-build"
+  echo "Publish later with: ./build.sh"
+  exit 0
+fi
 
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg ORCA_VERSION="$ORCA_VERSION" \

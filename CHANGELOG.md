@@ -59,6 +59,21 @@ changelog heading, git tag, and Docker tag are one identifier.
   user. OS packages installed this way are wiped on container recreate;
   durable ones belong in the Dockerfile. See README → "Root inside the
   container (`sudo`)".
+- `build.sh --local`: runs the publish pipeline up to the Trivy scan gate and
+  stops there — no Docker Hub tag lookup, no push, no git tag — so image
+  changes can be tested on the Docker host with the exact scanned bits
+  (`docker tag headless-orca:scan headless-orca && docker compose up -d
+  --no-build`) before publishing. Local builds never affect revision
+  numbering; the rev counter is still derived from published tags only.
+  See README → "Publishing".
+
+### Fixed
+
+- `build.sh` no longer swallows the `docker buildx create` error for its
+  `multiarch` builder: a create failure used to fall through to
+  `docker buildx use`, which aborted with a baffling
+  `failed to find instance "multiarch"` that hid the real cause. The builder
+  is now found-or-created explicitly with errors visible.
 
 ### Changed
 
