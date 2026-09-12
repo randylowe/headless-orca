@@ -8,6 +8,21 @@ set -e
 # pinned in the Dockerfile ENV.
 export HOME="${HOME:-${ORCA_HOME:-/home/orca}}"
 
+# First-boot shell wiring: oh-my-zsh (/opt/oh-my-zsh) and scm_breeze
+# (/opt/scm_breeze) are baked system-wide, but their dotfiles live in $HOME —
+# a volume that may predate this image. Create them only when absent so user
+# customizations always win, and only when HOME is writable (a UID override
+# without the volume chown must not crash the container here).
+if [ ! -e "${HOME}/.zshrc" ] && [ -w "${HOME}" ]; then
+  cat > "${HOME}/.zshrc" <<'ZSHRC'
+export ZSH="/opt/oh-my-zsh"
+ZSH_THEME="robbyrussell"
+plugins=(git)
+source "$ZSH/oh-my-zsh.sh"
+[ -f /opt/scm_breeze/scm_breeze.sh ] && source /opt/scm_breeze/scm_breeze.sh
+ZSHRC
+fi
+
 PORT="${ORCA_PORT:-6768}"
 
 # --pairing-address is genuinely optional to `orca serve` itself — confirmed

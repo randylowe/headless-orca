@@ -377,6 +377,29 @@ ORCA_UID=3000 ORCA_GID=3000 ./build.sh --local   # then the same env for --push
 The bind mount (or volume) must also be writable by that UID — `chown` it once if it isn't.
 Check which case you're in with `id` in an Orca terminal.
 
+## Shell environment (zsh, oh-my-zsh, scm_breeze, uv, Python)
+
+Paired terminals get a full shell toolchain baked into the image:
+
+- **zsh** is the `orca` login shell, with **oh-my-zsh** (baked at
+  `/opt/oh-my-zsh`) and **scm_breeze** (baked at `/opt/scm_breeze`). Both are
+  wired into `~/.zshrc` by the entrypoint on first boot — only if no
+  `.zshrc` exists, so your own customizations always win. They live under
+  `/opt` instead of `$HOME` on purpose: `/home/orca` is a volume, and image
+  content there would be shadowed by existing volume data.
+- **git** comes from `bookworm-backports` when Debian publishes a newer
+  version there, falling back to bookworm's stable git otherwise. Every
+  build echoes `git --version` so you know exactly what shipped.
+- **Python 3** (Debian's) plus **[uv](https://docs.astral.sh/uv/)** for
+  per-project environments. uv can also fetch other Python versions on
+  demand: `uv python install 3.13`.
+
+In a terminal tab, `zsh` drops you into oh-my-zsh with scm_breeze's git
+shortcuts loaded. In bash, `source /opt/scm_breeze/scm_breeze.sh` gets you
+the same shortcuts. The `~/.zshrc` the entrypoint creates is a starting
+point — edit it freely; it lives in the `orca-data` volume and survives
+rebuilds.
+
 ## Installing Orca skills
 
 Orca's agent skills (CLI usage, orchestration, computer use, etc.) are normally installed from

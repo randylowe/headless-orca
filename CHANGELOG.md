@@ -78,6 +78,13 @@ changelog heading, git tag, and Docker tag are one identifier.
   override carries a matching passwd entry — without it sudo refuses with
   `unknown uid` under the override. Set the same values for a `--local` run
   and its later `--push`.
+- Shell toolchain for paired terminals: zsh as the `orca` login shell, with
+  oh-my-zsh and scm_breeze baked system-wide (`/opt/oh-my-zsh`,
+  `/opt/scm_breeze`) and wired into `~/.zshrc` on first boot — existing
+  volumes included, and your own dotfiles always win. git comes from
+  `bookworm-backports` when available (newer than bookworm's 2.39, falling
+  back to stable). Python 3 + uv cover per-project Python environments, and
+  `uv python install` fetches other versions on demand.
 
 ### Fixed
 

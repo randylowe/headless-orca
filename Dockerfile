@@ -166,6 +166,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   sudo            -> not needed by orca-ide either; added so the paired user
 #                      can administer the container (ad-hoc apt installs etc.).
 #                      Passwordless, on purpose — see the sudoers step below.
+#   zsh             -> login shell for paired terminals; oh-my-zsh is baked at
+#                      /opt/oh-my-zsh and wired into ~/.zshrc by entrypoint.sh
+#                      (see below — /home/orca is a volume, so baking dotfiles
+#                      there would be shadowed by existing volume content)
+#   python3/pip/venv-> system Python for paired terminals; uv (installed
+#                      below) manages per-project environments and can fetch
+#                      other Python versions on demand
 #   libatomic1      -> not needed by orca-ide itself either. Added for Pi
 #                      (pi.dev) — its curl-installed build (Bun-compiled) hits
 #                      "libatomic.so.1: cannot open shared object file"
@@ -195,6 +202,10 @@ RUN apt-get update \
         git \
         openssh-client \
         sudo \
+        zsh \
+        python3 \
+        python3-pip \
+        python3-venv \
         xvfb \
         libgl1-mesa-dri \
         libgl1 \
@@ -252,7 +263,7 @@ COPY --from=node /usr/local /usr/local
 ARG ORCA_UID=1000
 ARG ORCA_GID=1000
 RUN groupadd --gid "${ORCA_GID}" orca \
-    && useradd --create-home --home-dir "${ORCA_HOME}" --shell /usr/sbin/nologin \
+    && useradd --create-home --home-dir "${ORCA_HOME}" --shell /bin/zsh \
        --uid "${ORCA_UID}" --gid "${ORCA_GID}" orca \
     && chown -R orca:orca /opt/orca /usr/local
 
@@ -267,6 +278,31 @@ RUN groupadd --gid "${ORCA_GID}" orca \
 RUN echo 'orca ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/orca \
     && chmod 0440 /etc/sudoers.d/orca \
     && visudo -c
+
+# --- Shell toolchain ----------------------------------------------------------
+# Newer git than bookworm's 2.39: bookworm-backports is Debian's blessed
+# channel. Falls back to the stable git installed above if backports doesn't
+# carry a newer one, and echoes the version so every build logs exactly what
+# shipped (verify-don't-guess — see README "Shell environment").
+RUN echo "deb http://deb.debian.org/debian bookworm-backports main" \
+      > /etc/apt/sources.list.d/bookworm-backports.list \
+    && apt-get update \
+    && (apt-get install -y --no-install-recommends -t bookworm-backports git || true) \
+    && git --version
+
+# oh-my-zsh + scm_breeze, baked system-wide under /opt. Deliberately NOT into
+# /home/orca — that's a volume, so image content there is shadowed by existing
+# volume content and would never reach running deployments. entrypoint.sh
+# wires both into ~/.zshrc on boot instead (idempotent, user files win).
+RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /opt/oh-my-zsh \
+    && git clone --depth=1 https://github.com/scmbreeze/scm_breeze.git /opt/scm_breeze
+
+# uv (Astral) — Python environment/package manager. System-wide binary so
+# it's on PATH for every shell; per-project venvs live beside each project.
+# Tracks latest stable by design (same posture as ORCA_VERSION=latest was);
+# every build logs the version it got.
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh \
+    && uv --version
 
 COPY --chmod=755 entrypoint.sh /opt/orca/entrypoint.sh
 RUN chown orca:orca /opt/orca/entrypoint.sh
