@@ -121,6 +121,17 @@ FROM node:${NODE_VERSION}-bookworm-slim AS node
 # --- Stage 3: runtime ---------------------------------------------------------
 FROM debian:bookworm-slim
 
+# Image versioning: tags follow <upstream>-<revision> (v1.4.200-1, distro
+# packaging style). ORCA_VERSION is the pinned Orca release (build.sh resolves
+# it from the upstream release manifest — "latest" only when building by
+# hand); WRAPPER_REV counts image-only rebuilds on top of that release
+# (build.sh auto-increments it from published Docker Hub tags). Both are
+# passed in so this label and the pushed tag can never disagree. See build.sh.
+ARG ORCA_VERSION
+ARG WRAPPER_REV=1
+LABEL org.opencontainers.image.version="${ORCA_VERSION}-${WRAPPER_REV}" \
+      org.opencontainers.image.base.name="debian:bookworm-slim"
+
 ENV DEBIAN_FRONTEND=noninteractive \
     LIBGL_ALWAYS_SOFTWARE=1 \
     ORCA_HOME=/home/orca \

@@ -226,9 +226,12 @@ Notes:
   client outside the container.
 - **`docker-compose.yml`** — the intended way to build/run this locally. Exposes port 6768,
   persists `/home/orca` in the `orca-data` named volume.
-- **`CLAUDE.md`** — working conventions for this repo (where `ARG`s go in the Dockerfile, the
-  verify-don't-guess policy for the package list, no hardcoded secrets) — read before making
-  structural changes.
+- **`AGENTS.md`** — working conventions for this repo (the verify-don't-guess policy for the
+  package list, no hardcoded secrets, changelog discipline) — read before making structural
+  changes. It is the canonical copy; `CLAUDE.md` is just a pointer that imports it, so all
+  agents read the same rules.
+- **`CHANGELOG.md`** — required on every completed feature (and notable bug fix): the entry is
+  written just before the git commit, in the same changeset.
 
 `LIBGL_ALWAYS_SOFTWARE=1` and `xvfb` are set/installed so Orca can render and auto-start its own
 virtual display with no `$DISPLAY` set — nothing in this setup ever sets one. Build both
@@ -368,8 +371,11 @@ orca skills update --all
 
 ## Upgrading
 
-Running the published image: `docker compose pull && docker compose up -d` gets the latest
-`randylowe/headless-orca:latest`. Building from source: bumping `ORCA_VERSION` and rebuilding is
+Published images are tagged `v<orca-version>-<rev>` (e.g. `randylowe/headless-orca:v1.4.200-1`)
+alongside the floating `latest` — pin `image:` to an exact tag in `docker-compose.yml` if you'd
+rather control upgrades explicitly than track `latest`. Running the published image:
+`docker compose pull && docker compose up -d` gets the latest `randylowe/headless-orca:latest`.
+Building from source: bumping `ORCA_VERSION` and rebuilding is
 the equivalent of the upstream guide's binary swap. Either way, the same risk the guide warns
 about for its own systemd flow applies here too: once a newer build
 starts, it can rewrite `orca-data.json` (under `/home/orca/.config` in the volume) into a newer

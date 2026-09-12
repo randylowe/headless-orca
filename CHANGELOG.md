@@ -32,3 +32,19 @@ commit**, in the same changeset.
 - Runtime-facing `README.md`: quick start (published image or build from
   source), pairing guide, Tailscale sidecar setup, agent-CLI and skill
   installation, upgrade/backup procedures, health check, and troubleshooting.
+- Versioned image tags on Docker Hub: `v<orca-version>-<rev>` (e.g.
+  `v1.4.200-1`) alongside the floating `latest`, so a tag tells you which
+  Orca release an image wraps and deployments can pin or roll back to an
+  exact image. The wrapper revision auto-increments from already-published
+  tags, so re-running the build never overwrites an existing version.
+- Images carry an `org.opencontainers.image.version` OCI label
+  (`v<orca-version>-<rev>`), so `docker inspect` shows what's bundled
+  without pulling anything.
+
+### Changed
+
+- The Trivy security scan now runs on the exact bits that get published: the
+  Orca release is resolved once and pinned into both the scanned build and
+  the pushed multi-arch build, instead of each build independently
+  re-resolving `latest` — previously a release landing mid-publish could
+  ship code that was never scanned.

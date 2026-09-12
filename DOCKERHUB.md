@@ -72,9 +72,17 @@ or phone over your own network (LAN or Tailscale) instead of running Orca locall
 
 ## Tags
 
-- `latest` — tracks the newest Orca release at build time.
-- Built from the `Dockerfile` in the linked GitHub repo; pin a specific Orca version by building
-  from source with `--build-arg ORCA_VERSION=vX.Y.Z` if you need reproducibility.
+- `latest` — floats; always the newest build.
+- `vX.Y.Z-N` — exact image version, distro-packaging style: wraps Orca `vX.Y.Z`,
+  image revision `N`. An image-only change (Dockerfile/entrypoint) bumps `N`; a
+  new Orca release resets it to `-1`.
+- Every image carries `org.opencontainers.image.version`, so `docker inspect`
+  shows exactly which Orca release is bundled without pulling anything.
+
+Built by `build.sh` in the linked GitHub repo, which resolves the Orca release
+from the upstream release manifest automatically — no manual pinning needed.
+(Pin one yourself by building from source with
+`--build-arg ORCA_VERSION=vX.Y.Z --build-arg WRAPPER_REV=1`.)
 
 ## Full documentation
 
