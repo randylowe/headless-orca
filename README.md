@@ -281,9 +281,12 @@ image's `USER orca` with no rebuild. Because bind mounts translate numeric IDs l
   directions. New synced content arrives owned by the same UID, so the container can work with it.
 - Git inside the container sees matching owner/UID on `/mnt/projects` repos — no "dubious
   ownership" rejections.
-- Cosmetic: `whoami`/`id` inside the container can't resolve uid 1001 to a name (the passwd entry
-  is still `orca` = 1000). Harmless — `$HOME` comes from `ORCA_HOME`, npm global installs go to
-  `$HOME/.npm-global` via `NPM_CONFIG_PREFIX`, and nothing in this stack looks the name up.
+- Cosmetic: `whoami`/`id` inside the container can't resolve uid 1001 to a name (the passwd
+  entry is still `orca` = 1000). Harmless **once `HOME` is set** — a UID with no passwd entry
+  gets no `HOME` from Docker at all, which crash-loops Electron (`Failed to get 'userData'
+  path`) and breaks fontconfig cache paths. The image therefore pins `HOME=/home/orca`, the
+  entrypoint defaults it, and compose sets it explicitly. npm global installs go to
+  `$HOME/.npm-global` via `NPM_CONFIG_PREFIX`.
 
 Setup against an existing deployment is two one-time steps:
 

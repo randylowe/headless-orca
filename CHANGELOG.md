@@ -80,6 +80,11 @@ changelog heading, git tag, and Docker tag are one identifier.
   `docker buildx use`, which aborted with a baffling
   `failed to find instance "multiarch"` that hid the real cause. The builder
   is now found-or-created explicitly with errors visible.
+- Crash loop at startup under a compose `user:` override: a UID with no
+  passwd entry left `HOME` unset, so Electron couldn't resolve its
+  `userData` path and fontconfig couldn't find writable cache dirs.
+  `HOME=/home/orca` is now pinned in the image, defaulted in the entrypoint,
+  and set explicitly in compose.
 
 ### Changed
 

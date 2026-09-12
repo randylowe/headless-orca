@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Compose `user:` overrides can run this as a UID with no passwd entry, in
+# which case Docker leaves HOME unset — Electron then fails to resolve its
+# userData path and crash-loops (fontconfig dies the same way). Default to
+# the image home so UID overrides work even on images built before HOME was
+# pinned in the Dockerfile ENV.
+export HOME="${HOME:-${ORCA_HOME:-/home/orca}}"
+
 PORT="${ORCA_PORT:-6768}"
 
 # --pairing-address is genuinely optional to `orca serve` itself — confirmed

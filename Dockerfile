@@ -132,7 +132,12 @@ ARG WRAPPER_REV=1
 LABEL org.opencontainers.image.version="${ORCA_VERSION}-${WRAPPER_REV}" \
       org.opencontainers.image.base.name="debian:bookworm-slim"
 
+# HOME is pinned because compose `user:` overrides can run this image as a UID
+# with no passwd entry — Docker then leaves HOME unset, Electron can't resolve
+# its userData path ("Failed to get 'userData' path"), and the container
+# crash-loops at startup. fontconfig's cache lookup dies the same way.
 ENV DEBIAN_FRONTEND=noninteractive \
+    HOME=/home/orca \
     LIBGL_ALWAYS_SOFTWARE=1 \
     ORCA_HOME=/home/orca \
     NPM_CONFIG_PREFIX=/home/orca/.npm-global \

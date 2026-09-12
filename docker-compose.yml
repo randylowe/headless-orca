@@ -26,6 +26,11 @@ services:
       # host's real address before running; don't commit your real one.
       ORCA_PAIRING_ADDRESS: "192.0.2.10"
       ORCA_PORT: "6768"
+      # Pin HOME for the `user:` UID override below: a UID with no passwd
+      # entry gets no HOME from Docker, and Electron crash-loops without it.
+      # Redundant with the image ENV on new builds; kept so older published
+      # images work under the override without a rebuild.
+      HOME: /home/orca
     ports:
       - "6768:6768"
     volumes:
