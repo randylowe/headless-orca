@@ -18,6 +18,16 @@ commit**, in the same changeset.
   as a thin pointer so every agent reads the same rules.
 - `CHANGELOG.md` — this file. All future features and notable fixes get an
   entry here just before their git commit.
+- Versioned image tags in distro-packaging style (`v<orca-version>-<rev>`, e.g.
+  `v1.4.200-1`) alongside the floating `latest` tag, plus an
+  `org.opencontainers.image.version` OCI label on every image so `docker
+  inspect` reveals the bundled Orca release without pulling.
+- `build.sh` publishing pipeline: auto-resolves the Orca release from the
+  upstream electron-builder manifest, auto-increments the wrapper revision
+  from already-published Docker Hub tags, gates the push on a Trivy
+  HIGH/CRITICAL scan of the exact bits to be published (`--ignore-unfixed`,
+  documented exceptions in `.trivyignore`), then pushes multi-arch
+  (amd64/arm64).
 - Initial headless Orca server: 3-stage multi-arch Dockerfile (amd64/arm64) that
   fetches the Orca Linux AppImage, verifies it against the release sha512
   manifest, and extracts it at build time — no FUSE needed at runtime.
