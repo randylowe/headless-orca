@@ -1,0 +1,9 @@
+.DS_Store
+*.log
+.env
+.env.*
+
+# BMad tooling install and planning/implementation artifacts — local working
+# state, not source for this repo
+_bmad/
+_bmad-output/

@@ -1,0 +1,33 @@
+services:
+  headless-orca:
+    build:
+      context: .
+      args:
+        ORCA_VERSION: latest   # pin to a real tag, e.g. v1.4.199, once you've tested it
+    image: headless-orca
+    container_name: headless-orca
+    restart: unless-stopped
+    environment:
+      # Address remote Orca clients (desktop/mobile) should dial —
+      # your docker host's Tailscale IP, LAN IP, or tunnel hostname.
+      # Placeholder below (RFC 5737 TEST-NET-1) — replace with your own
+      # host's real address before running; don't commit your real one.
+      ORCA_PAIRING_ADDRESS: "192.0.2.10"
+      ORCA_PORT: "6768"
+    ports:
+      - "6768:6768"
+    volumes:
+      - orca-data:/home/orca
+      # Uncomment to let agent CLIs use your existing SSH keys for git:
+      # - ~/.ssh:/home/orca/.ssh:ro
+    # Only uncomment if logs show a Chromium sandbox error, and try without
+    # it first — AppRun auto-detects sandbox availability and falls back to
+    # --no-sandbox on its own (see entrypoint.sh). SYS_ADMIN is a broad
+    # capability that meaningfully weakens container isolation; it's a
+    # last resort, not a default.
+    # cap_add:
+    #   - SYS_ADMIN
+
+volumes:
+  orca-data:
+    name: orca-data

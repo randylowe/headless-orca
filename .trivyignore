@@ -1,0 +1,8 @@
+# CVE-2026-84375 (js-yaml DoS, HIGH) lives inside Orca's own bundled
+# resources/node_modules/js-yaml — shipped inside the orca-ide AppImage
+# itself (Stably's dependency, not this Dockerfile's), fixed upstream in
+# js-yaml 4.3.2 / 3.15.2. Nothing in this repo can patch it; it resolves
+# once a released Orca version bumps its bundled js-yaml.
+# Re-check by deleting this file and re-running build.sh's scan step —
+# remove this line once it stops showing up.
+CVE-2026-84375
