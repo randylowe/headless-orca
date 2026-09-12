@@ -61,10 +61,11 @@ changelog heading, git tag, and Docker tag are one identifier.
   container (`sudo`)".
 - `build.sh --local`: runs the publish pipeline up to the Trivy scan gate and
   stops there — no Docker Hub tag lookup, no push, no git tag — so image
-  changes can be tested on the Docker host with the exact scanned bits
-  (`docker tag headless-orca:scan headless-orca && docker compose up -d
-  --no-build`) before publishing. Local builds never affect revision
-  numbering; the rev counter is still derived from published tags only.
+  changes can be tested on the Docker host with the exact scanned bits. The
+  result is tagged `headless-orca:latest` in the local store, so
+  a compose file pointing at that name runs it directly (`docker compose up
+  -d --no-build`). Local builds never affect revision numbering; the rev
+  counter is still derived from published tags only.
   See README → "Publishing".
 - `build.sh --push`: publishes the bits from a previous `--local` run without
   rebuilding them. Re-scans the existing local image (the gate still runs),
@@ -72,6 +73,11 @@ changelog heading, git tag, and Docker tag are one identifier.
   upstream — so a release landing between test and push can't swap in
   unscanned bits — then does the multi-arch push + git tag. amd64 is all
   cache hits; only arm64 compiles. See README → "Publishing".
+- `build.sh` passes `ORCA_UID`/`ORCA_GID` through as build args (environment
+  override, default `1000:1000`), so an image built for a runtime `user:` UID
+  override carries a matching passwd entry — without it sudo refuses with
+  `unknown uid` under the override. Set the same values for a `--local` run
+  and its later `--push`.
 
 ### Fixed
 

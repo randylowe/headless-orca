@@ -113,7 +113,7 @@ Set via `docker-compose.yml`'s `environment:` (runtime) and `build.args:` (build
 | `ORCA_PORT` | env | Port `orca serve` listens on. Default `6768`. |
 | `ORCA_VERSION` | build arg | Orca release tag to install, e.g. `v1.4.199`. Defaults to `latest`, which drifts on every rebuild — pin it once you've tested a version. |
 | `NODE_VERSION` | build arg | Node.js version/line to bundle. Defaults to `current` (tracks newest release line, not just LTS). |
-| `ORCA_UID` / `ORCA_GID` | build args | Default `1000:1000`. Bake a matching UID/GID into the image for bind-mounted host directories. Runtime alternative with no rebuild: compose's `user:` override — what `docker-compose.yml` actually uses; see "Persistence" below. |
+| `ORCA_UID` / `ORCA_GID` | build args | Default `1000:1000`. Bake a matching UID/GID into the image for bind-mounted host directories. Runtime alternative with no rebuild: compose's `user:` override — what `docker-compose.yml` actually uses; see "Persistence" below. `build.sh` honors `ORCA_UID`/`ORCA_GID` environment variables too (`ORCA_UID=3000 ORCA_GID=3000 ./build.sh --local`) — required for sudo to work under a `user:` override; see "Root inside the container (`sudo`)". |
 
 To let agent CLIs inside the container use your existing SSH keys for git, uncomment the
 `~/.ssh` volume mount in `docker-compose.yml`. If startup logs show a Chromium sandbox error,
@@ -368,8 +368,14 @@ support at all; same trust boundary, just without `sudo` inside.)
 image's `/etc/passwd`. Under an override to a UID other than the image's `orca` (e.g.
 `user: "1001:1001"` against a default build, where `orca` is 1000), it fails with
 `sudo: unknown uid 1001, who are you?` — build with `ORCA_UID`/`ORCA_GID` set to match the
-override instead, so the baked-in passwd entry matches. Check which case you're in with `id`
-in an Orca terminal.
+override instead, so the baked-in passwd entry matches:
+
+```sh
+ORCA_UID=3000 ORCA_GID=3000 ./build.sh --local   # then the same env for --push
+```
+
+The bind mount (or volume) must also be writable by that UID — `chown` it once if it isn't.
+Check which case you're in with `id` in an Orca terminal.
 
 ## Installing Orca skills
 
@@ -416,14 +422,15 @@ the revision auto-increments from already-published tags.
 
 To test image changes before publishing, `./build.sh --local` runs the same pipeline — same
 pinned version, same scan gate — and stops before anything touches Docker Hub: no tag lookup,
-no push, no git tag. Run the exact scanned bits locally with a retag + `--no-build` (compose
-uses the default builder, so it can't reuse the script's buildx cache — a plain
-`up --build` would rebuild from scratch instead of running what was scanned):
+no push, no git tag. The result is tagged `headless-orca:latest` in the local
+Docker store, so a compose file pointing at `image: headless-orca:latest` runs the exact
+scanned bits with no retag step. Use `--no-build` so compose can never quietly rebuild with
+different args (a plain `up --build` goes through the default builder, whose cache is separate
+from the script's):
 
 ```sh
 ./build.sh --local
-docker tag headless-orca:scan headless-orca
-docker compose up -d --no-build
+docker compose up -d --no-build     # with image: headless-orca:latest
 ```
 
 Publish for real afterwards with `./build.sh --push` — the second half of a `--local` run. It

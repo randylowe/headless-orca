@@ -22,12 +22,21 @@ set -euo pipefail
 #
 #     WRAPPER_REV=7 ./build.sh
 #
+# ORCA_UID/ORCA_GID work the same way (default 1000:1000). Set them when the
+# runtime runs under a different UID — compose `user:` overrides — so the
+# baked-in passwd entry matches and sudo works (see README → "Root inside the
+# container"). Use the SAME values for a --local run and its later --push:
+#
+#     ORCA_UID=3000 ORCA_GID=3000 ./build.sh --local
+#
 # Usage:
 #     ./build.sh            resolve version → scan gate → multi-arch push to
 #                           Docker Hub (+ git tag on a clean tree)
 #     ./build.sh --local    same pipeline, stops after the scan: no Hub
 #                           lookup, no push, no git tag — for testing image
-#                           changes on the Docker host before publishing
+#                           changes on the Docker host before publishing.
+#                           Tags the result headless-orca:latest in the
+#                           local store, so compose can run it directly
 #     ./build.sh --push     second half of a --local run: re-scans the
 #                           existing local image (no rebuild), re-resolves the
 #                           revision, multi-arch push + git tag
@@ -46,18 +55,18 @@ TAGS_URL="https://hub.docker.com/v2/repositories/randylowe/headless-orca/tags?pa
 
 if [ "$PUSH" = 1 ]; then
   # Second half of a --local run: publish the exact bits that were already
-  # built and scanned locally. The version comes from the scan image's own
+  # built and scanned locally. The version comes from the local image's own
   # OCI label — NOT re-resolved from upstream — so an Orca release landing
   # between the local run and this push can't swap in unscanned bits.
-  if ! docker image inspect headless-orca:scan >/dev/null 2>&1; then
-    echo "ERROR: no local image headless-orca:scan — run ./build.sh --local first" >&2
+  if ! docker image inspect headless-orca:latest >/dev/null 2>&1; then
+    echo "ERROR: no local image headless-orca:latest — run ./build.sh --local first" >&2
     exit 1
   fi
-  LABEL_VERSION="$(docker image inspect headless-orca:scan \
+  LABEL_VERSION="$(docker image inspect headless-orca:latest \
     --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
   ORCA_VERSION="${LABEL_VERSION%-*}"
   if [ -z "$ORCA_VERSION" ] || [ "$ORCA_VERSION" = "$LABEL_VERSION" ]; then
-    echo "ERROR: could not read the Orca version from headless-orca:scan's" \
+    echo "ERROR: could not read the Orca version from headless-orca:latest's" \
          "org.opencontainers.image.version label (got: '${LABEL_VERSION:-<empty>}')" >&2
     echo "Rebuild it with ./build.sh --local" >&2
     exit 1
@@ -130,14 +139,21 @@ docker buildx inspect --bootstrap multiarch
 # when unchanged: just a manifest check; layers only re-pull when Debian
 # actually shipped something.
 #
-# Skipped entirely in --push mode: headless-orca:scan already exists (it's the
-# whole input to that mode) and rebuilding it could produce bits that differ
-# from what the scan gate is about to see.
+# Skipped entirely in --push mode: headless-orca:latest already exists (it's
+# the whole input to that mode) and rebuilding it could produce bits that
+# differ from what the scan gate is about to see.
 if [ "$PUSH" = 0 ]; then
+  # One tag, local store only: headless-orca:latest (the Hub one is
+  # randylowe/headless-orca:latest, pushed only by the runs below). The same
+  # image is scanned in place by Trivy next, and --push reads its OCI label —
+  # so a compose file pointing at this name runs the exact scanned bits with
+  # no retag step.
   docker buildx build --pull --platform linux/amd64 \
     --build-arg ORCA_VERSION="$ORCA_VERSION" \
     --build-arg WRAPPER_REV="$WRAPPER_REV" \
-    -t headless-orca:scan \
+    --build-arg ORCA_UID="${ORCA_UID:-1000}" \
+    --build-arg ORCA_GID="${ORCA_GID:-1000}" \
+    -t headless-orca:latest \
     --load .
 fi
 
@@ -146,23 +162,23 @@ fi
 # aren't actionable by rebuilding here, so failing on them would block every
 # publish forever. --ignorefile carries one documented, expiring exception
 # for an issue bundled inside Orca's own AppImage (see .trivyignore).
-# In --push mode this re-scans the existing headless-orca:scan unchanged, so
+# In --push mode this re-scans the existing headless-orca:latest unchanged, so
 # the gate still runs on the exact bits about to be pushed.
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/.trivyignore:/.trivyignore:ro" \
   aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed \
-    --ignorefile /.trivyignore --exit-code 1 headless-orca:scan
+    --ignorefile /.trivyignore --exit-code 1 headless-orca:latest
 
 # --local stops here: the exact scanned bits are loaded locally and nothing
-# has touched Docker Hub. Run them via compose with a retag + --no-build —
-# compose uses the default builder, so it can't reuse this buildx cache and
-# a plain `up --build` would rebuild from scratch instead of running what
-# was just scanned.
+# has touched Docker Hub. They're tagged headless-orca:latest, so a compose
+# file pointing at that name runs them directly with --no-build — a plain
+# `up --build` would rebuild via the default builder (separate cache) instead
+# of running what was just scanned.
 if [ "$LOCAL" = 1 ]; then
   echo "Scan passed — local build ready, NOT published."
-  echo "Run the scanned bits:"
-  echo "  docker tag headless-orca:scan headless-orca"
+  echo "Scanned bits are tagged locally as headless-orca:latest:"
+  echo "  image: headless-orca:latest     # in docker-compose.yml"
   echo "  docker compose up -d --no-build"
   echo "Publish later with: ./build.sh --push (or ./build.sh for the full pipeline)"
   exit 0
@@ -171,11 +187,15 @@ fi
 # --push deliberately omits --pull here: the cached base layers ARE the ones
 # the scan saw, and pulling a fresher bookworm-slim at this point could ship
 # base bits the gate never ran against. Full mode keeps --pull — it rescans
-# in the same run anyway.
+# in the same run anyway. Same rule for ORCA_UID/ORCA_GID: keep the
+# environment consistent with the --local run, or the useradd layer rebuilds
+# and the pushed bits differ from the scanned ones.
 if [ "$PUSH" = 1 ]; then PULL_FLAG=""; else PULL_FLAG="--pull"; fi
 docker buildx build ${PULL_FLAG:+"$PULL_FLAG"} --platform linux/amd64,linux/arm64 \
   --build-arg ORCA_VERSION="$ORCA_VERSION" \
   --build-arg WRAPPER_REV="$WRAPPER_REV" \
+  --build-arg ORCA_UID="${ORCA_UID:-1000}" \
+  --build-arg ORCA_GID="${ORCA_GID:-1000}" \
   -t "randylowe/headless-orca:${IMAGE_TAG}" \
   -t randylowe/headless-orca:latest \
   --push .
