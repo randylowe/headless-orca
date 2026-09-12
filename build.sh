@@ -28,21 +28,46 @@ set -euo pipefail
 #     ./build.sh --local    same pipeline, stops after the scan: no Hub
 #                           lookup, no push, no git tag — for testing image
 #                           changes on the Docker host before publishing
+#     ./build.sh --push     second half of a --local run: re-scans the
+#                           existing local image (no rebuild), re-resolves the
+#                           revision, multi-arch push + git tag
 # ---------------------------------------------------------------------------
 LOCAL=0
+PUSH=0
 case "${1:-}" in
   "") ;;
   --local) LOCAL=1 ;;
-  *) echo "usage: build.sh [--local]" >&2; exit 1 ;;
+  --push) PUSH=1 ;;
+  *) echo "usage: build.sh [--local|--push]" >&2; exit 1 ;;
 esac
 
 MANIFEST_URL="https://github.com/stablyai/orca/releases/latest/download/latest-linux.yml"
 TAGS_URL="https://hub.docker.com/v2/repositories/randylowe/headless-orca/tags?page_size=100&name="
 
-ORCA_VERSION="v$(curl -fsSL "$MANIFEST_URL" | awk '$1 == "version:" {print $2; exit}')"
-if [ -z "${ORCA_VERSION#v}" ]; then
-  echo "ERROR: could not resolve the Orca version from $MANIFEST_URL — refusing to build" >&2
-  exit 1
+if [ "$PUSH" = 1 ]; then
+  # Second half of a --local run: publish the exact bits that were already
+  # built and scanned locally. The version comes from the scan image's own
+  # OCI label — NOT re-resolved from upstream — so an Orca release landing
+  # between the local run and this push can't swap in unscanned bits.
+  if ! docker image inspect headless-orca:scan >/dev/null 2>&1; then
+    echo "ERROR: no local image headless-orca:scan — run ./build.sh --local first" >&2
+    exit 1
+  fi
+  LABEL_VERSION="$(docker image inspect headless-orca:scan \
+    --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
+  ORCA_VERSION="${LABEL_VERSION%-*}"
+  if [ -z "$ORCA_VERSION" ] || [ "$ORCA_VERSION" = "$LABEL_VERSION" ]; then
+    echo "ERROR: could not read the Orca version from headless-orca:scan's" \
+         "org.opencontainers.image.version label (got: '${LABEL_VERSION:-<empty>}')" >&2
+    echo "Rebuild it with ./build.sh --local" >&2
+    exit 1
+  fi
+else
+  ORCA_VERSION="v$(curl -fsSL "$MANIFEST_URL" | awk '$1 == "version:" {print $2; exit}')"
+  if [ -z "${ORCA_VERSION#v}" ]; then
+    echo "ERROR: could not resolve the Orca version from $MANIFEST_URL — refusing to build" >&2
+    exit 1
+  fi
 fi
 
 if [ -z "${WRAPPER_REV:-}" ]; then
@@ -69,7 +94,9 @@ if [ -z "${WRAPPER_REV:-}" ]; then
 fi
 
 IMAGE_TAG="${ORCA_VERSION}-${WRAPPER_REV}"
-if [ "$LOCAL" = 1 ]; then
+if [ "$PUSH" = 1 ]; then
+  echo "Pushing scanned ${ORCA_VERSION} bits as randylowe/headless-orca:${IMAGE_TAG} (latest will float alongside)"
+elif [ "$LOCAL" = 1 ]; then
   echo "Local build of ${ORCA_VERSION} (rev ${WRAPPER_REV} is local-only — Docker Hub untouched)"
 else
   echo "Building randylowe/headless-orca:${IMAGE_TAG} (latest will float alongside)"
@@ -102,17 +129,25 @@ docker buildx inspect --bootstrap multiarch
 # the builder silently reuses whatever base layers are cached locally. Cheap
 # when unchanged: just a manifest check; layers only re-pull when Debian
 # actually shipped something.
-docker buildx build --pull --platform linux/amd64 \
-  --build-arg ORCA_VERSION="$ORCA_VERSION" \
-  --build-arg WRAPPER_REV="$WRAPPER_REV" \
-  -t headless-orca:scan \
-  --load .
+#
+# Skipped entirely in --push mode: headless-orca:scan already exists (it's the
+# whole input to that mode) and rebuilding it could produce bits that differ
+# from what the scan gate is about to see.
+if [ "$PUSH" = 0 ]; then
+  docker buildx build --pull --platform linux/amd64 \
+    --build-arg ORCA_VERSION="$ORCA_VERSION" \
+    --build-arg WRAPPER_REV="$WRAPPER_REV" \
+    -t headless-orca:scan \
+    --load .
+fi
 
 # --ignore-unfixed: debian:bookworm-slim always carries some HIGH/CRITICAL
 # CVEs with no upstream fix yet (won't-fix or affected-no-patch) — those
 # aren't actionable by rebuilding here, so failing on them would block every
 # publish forever. --ignorefile carries one documented, expiring exception
 # for an issue bundled inside Orca's own AppImage (see .trivyignore).
+# In --push mode this re-scans the existing headless-orca:scan unchanged, so
+# the gate still runs on the exact bits about to be pushed.
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$PWD/.trivyignore:/.trivyignore:ro" \
@@ -129,11 +164,16 @@ if [ "$LOCAL" = 1 ]; then
   echo "Run the scanned bits:"
   echo "  docker tag headless-orca:scan headless-orca"
   echo "  docker compose up -d --no-build"
-  echo "Publish later with: ./build.sh"
+  echo "Publish later with: ./build.sh --push (or ./build.sh for the full pipeline)"
   exit 0
 fi
 
-docker buildx build --pull --platform linux/amd64,linux/arm64 \
+# --push deliberately omits --pull here: the cached base layers ARE the ones
+# the scan saw, and pulling a fresher bookworm-slim at this point could ship
+# base bits the gate never ran against. Full mode keeps --pull — it rescans
+# in the same run anyway.
+if [ "$PUSH" = 1 ]; then PULL_FLAG=""; else PULL_FLAG="--pull"; fi
+docker buildx build ${PULL_FLAG:+"$PULL_FLAG"} --platform linux/amd64,linux/arm64 \
   --build-arg ORCA_VERSION="$ORCA_VERSION" \
   --build-arg WRAPPER_REV="$WRAPPER_REV" \
   -t "randylowe/headless-orca:${IMAGE_TAG}" \

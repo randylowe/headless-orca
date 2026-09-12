@@ -92,6 +92,9 @@ Don't relitigate these; they were verified once, the hard way:
   it will push (single-arch build first, same pinned `ORCA_VERSION`) with
   Trivy on HIGH/CRITICAL, `--ignore-unfixed` (bookworm-slim always carries
   some unfixable CVEs — that's deliberate, don't "fix" it by failing on
-  them), with documented exceptions in `.trivyignore`.
+  them), with documented exceptions in `.trivyignore`. `--push` stays inside
+  this gate: it re-scans the existing local image rather than skipping the
+  scan, reads the version from that image's label (not upstream), and skips
+  `--pull` so the pushed base layers are the scanned ones.
 - **`_bmad/` and `_bmad-output/` are local working state** (gitignored) — never
   commit them or treat them as repo source.

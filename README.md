@@ -423,9 +423,18 @@ docker tag headless-orca:scan headless-orca
 docker compose up -d --no-build
 ```
 
-Publish for real afterwards with plain `./build.sh` — its amd64 half reuses the local build's
-layer cache, so only arm64 compiles fresh. Local builds never affect the revision numbering:
-the counter is derived from tags on Docker Hub, which `--local` doesn't touch.
+Publish for real afterwards with `./build.sh --push` — the second half of a `--local` run. It
+re-scans the *existing* local image (no rebuild), re-resolves the revision from Docker Hub,
+then does the multi-arch push + git tag. The version comes from the scan image's own OCI
+label, not a fresh upstream resolve, so a new Orca release landing between your local test and
+the push can't swap in unscanned bits. The multi-arch build deliberately skips `--pull` in
+this mode for the same reason: cached base layers are the ones the scan saw. Only arm64
+compiles at push time (amd64 is all cache hits). Local builds never affect the revision
+numbering: the counter is derived from tags on Docker Hub, which `--local` doesn't touch.
+
+**Rule: if you edit the Dockerfile between `--local` and `--push`, rerun `--local` first** —
+otherwise the push's builds could differ from the bits the scan gate saw. (Plain
+`./build.sh` is always safe: it rebuilds and rescans in the same run.)
 
 ## Upgrading
 

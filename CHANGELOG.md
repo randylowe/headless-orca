@@ -66,6 +66,12 @@ changelog heading, git tag, and Docker tag are one identifier.
   --no-build`) before publishing. Local builds never affect revision
   numbering; the rev counter is still derived from published tags only.
   See README → "Publishing".
+- `build.sh --push`: publishes the bits from a previous `--local` run without
+  rebuilding them. Re-scans the existing local image (the gate still runs),
+  reads the Orca version from that image's OCI label instead of re-resolving
+  upstream — so a release landing between test and push can't swap in
+  unscanned bits — then does the multi-arch push + git tag. amd64 is all
+  cache hits; only arm64 compiles. See README → "Publishing".
 
 ### Fixed
 
