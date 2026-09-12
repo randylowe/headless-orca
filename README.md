@@ -348,6 +348,10 @@ an interactive shell as this exact user, so a prompt would add friction, not sec
 
 Two things to know before living in it:
 
+- **`sudo` works for any runtime UID** — the sudoers rule is UID-agnostic on
+  purpose, so it holds under compose `user:` overrides too (no passwd entry
+  required).
+
 - **OS packages installed this way are ephemeral.** `sudo apt-get install …` writes to the
   container filesystem, which is wiped on every recreate/rebuild — unlike the agent CLIs and
   npm globals above, which persist in the `/home/orca` volume. Fine for ad-hoc tools; anything

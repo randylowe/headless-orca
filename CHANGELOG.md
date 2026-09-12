@@ -98,6 +98,10 @@ changelog heading, git tag, and Docker tag are one identifier.
   `userData` path and fontconfig couldn't find writable cache dirs.
   `HOME=/home/orca` is now pinned in the image, defaulted in the entrypoint,
   and set explicitly in compose.
+- `sudo` now works under any runtime UID: the sudoers rule is UID-agnostic
+  (`ALL ALL=(ALL:ALL) NOPASSWD: ALL`) instead of granting the baked `orca`
+  name, which refused UIDs that have no passwd entry under `user:` overrides
+  ("you do not exist in the passwd database").
 
 ### Changed
 

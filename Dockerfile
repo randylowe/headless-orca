@@ -267,16 +267,20 @@ RUN groupadd --gid "${ORCA_GID}" orca \
        --uid "${ORCA_UID}" --gid "${ORCA_GID}" orca \
     && chown -R orca:orca /opt/orca /usr/local
 
-# Passwordless sudo for orca. The account above is created with NO password
-# (locked in shadow), so password-prompted sudo could never succeed — and a
-# prompt would add nothing security-wise: anyone who can pair to this server
-# already has an interactive shell as this exact user. NOPASSWD just makes
-# that shell able to administer the container (apt installs, etc.). Scoped to
-# the container: no docker socket is mounted and the default capability set
-# applies, so this is not host root. visudo -c fails the build on a malformed
-# rule instead of shipping a sudo that can't start.
-RUN echo 'orca ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/orca \
-    && chmod 0440 /etc/sudoers.d/orca \
+# Passwordless sudo for whoever runs the container. The runtime UID is
+# user-configurable (compose `user:` override, any value) and usually has no
+# passwd entry, so the rule is deliberately UID-agnostic (`ALL`) rather than
+# granting the `orca` name: a name-based rule refuses UIDs that don't exist
+# in /etc/passwd ("you do not exist in the passwd database"). There are no
+# other users here, and anyone who can pair to this server already has an
+# interactive shell as the runtime user, which already owns all the writable
+# data — NOPASSWD just makes that shell able to administer the container
+# (apt installs, etc.). Scoped to the container: no docker socket is mounted
+# and the default capability set applies, so this is not host root. visudo -c
+# fails the build on a malformed rule instead of shipping a sudo that can't
+# start.
+RUN echo 'ALL ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/container-user \
+    && chmod 0440 /etc/sudoers.d/container-user \
     && visudo -c
 
 # --- Shell toolchain ----------------------------------------------------------
