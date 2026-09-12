@@ -35,6 +35,11 @@ written just before the git commit, in the same changeset.**
   don't need an entry.
 - Never commit a feature without its changelog entry, and never batch entries
   up for later — the entry is part of "done".
+- **Release sections are keyed to the published image tag** — when `build.sh`
+  publishes, `[Unreleased]` folds into `## [v<orca-version>-<rev>] - <date>`
+  and the same string is applied as a git tag (clean tree only). The Docker
+  tag is the project's only version; don't invent an independent project
+  semver.
 
 ## Working in this repo — decisions already made
 

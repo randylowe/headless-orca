@@ -85,3 +85,24 @@ docker buildx build --platform linux/amd64,linux/arm64 \
   -t "randylowe/headless-orca:${IMAGE_TAG}" \
   -t randylowe/headless-orca:latest \
   --push .
+
+# ---------------------------------------------------------------------------
+# Mirror the published image tag as a git tag, so git tag = Docker tag =
+# changelog heading (see CHANGELOG.md "Versioning note" and AGENTS.md).
+# Only on a clean tree — tagging a dirty working tree would mislabel the
+# published bits. -f on the tag: a republish of the same <version>-<rev>
+# moves the tag to the commit that actually produced the pushed bits; a
+# stale tag pointing at the wrong commit is worse than a moved one.
+# ---------------------------------------------------------------------------
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git diff-index --quiet HEAD --; then
+    git tag -f "$IMAGE_TAG"
+    git push -f origin "refs/tags/${IMAGE_TAG}" 2>/dev/null \
+      || echo "NOTE: git tag ${IMAGE_TAG} created locally but not pushed (no remote configured yet?) — push it once the GitHub repo exists."
+    echo "Git tag: ${IMAGE_TAG}"
+  else
+    echo "WARNING: working tree is dirty — git tag ${IMAGE_TAG} skipped (it would point at a commit that isn't what was published)."
+  fi
+else
+  echo "NOTE: not a git repo — skipping git tag ${IMAGE_TAG}."
+fi

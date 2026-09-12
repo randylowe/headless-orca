@@ -8,6 +8,12 @@ Per repo convention (**see AGENTS.md → "Changelog discipline"**), every comple
 feature — and notable bug fix — gets an entry here **just before the git
 commit**, in the same changeset.
 
+**Versioning note:** this project has no independent version — the published
+Docker image tag (`v<orca-version>-<rev>`, e.g. `v1.4.200-1`) *is* the version.
+When `build.sh` publishes a tag, the `[Unreleased]` section folds into
+`## [<image-tag>] - <date>`, and the same string is applied as a git tag, so
+changelog heading, git tag, and Docker tag are one identifier.
+
 ## [Unreleased]
 
 ### Added
@@ -42,14 +48,10 @@ commit**, in the same changeset.
 - Runtime-facing `README.md`: quick start (published image or build from
   source), pairing guide, Tailscale sidecar setup, agent-CLI and skill
   installation, upgrade/backup procedures, health check, and troubleshooting.
-- Versioned image tags on Docker Hub: `v<orca-version>-<rev>` (e.g.
-  `v1.4.200-1`) alongside the floating `latest`, so a tag tells you which
-  Orca release an image wraps and deployments can pin or roll back to an
-  exact image. The wrapper revision auto-increments from already-published
-  tags, so re-running the build never overwrites an existing version.
-- Images carry an `org.opencontainers.image.version` OCI label
-  (`v<orca-version>-<rev>`), so `docker inspect` shows what's bundled
-  without pulling anything.
+- Release convention: the published Docker tag is the project's only version —
+  changelog sections are cut as `## [v<orca-version>-<rev>] - <date>` and
+  `build.sh` mirrors each published tag as a git tag on the built commit
+  (clean-tree guard), so changelog, git, and Docker Hub share one identifier.
 
 ### Changed
 
