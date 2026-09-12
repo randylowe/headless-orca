@@ -113,7 +113,7 @@ Set via `docker-compose.yml`'s `environment:` (runtime) and `build.args:` (build
 | `ORCA_PORT` | env | Port `orca serve` listens on. Default `6768`. |
 | `ORCA_VERSION` | build arg | Orca release tag to install, e.g. `v1.4.199`. Defaults to `latest`, which drifts on every rebuild — pin it once you've tested a version. |
 | `NODE_VERSION` | build arg | Node.js version/line to bundle. Defaults to `current` (tracks newest release line, not just LTS). |
-| `ORCA_UID` / `ORCA_GID` | build args | Default `1000:1000`. Only matters if you bind-mount a real host directory into `/home/orca` instead of the named volume — see "Persistence" below. |
+| `ORCA_UID` / `ORCA_GID` | build args | Default `1000:1000`. Bake a matching UID/GID into the image for bind-mounted host directories. Runtime alternative with no rebuild: compose's `user:` override — what `docker-compose.yml` actually uses; see "Persistence" below. |
 
 To let agent CLIs inside the container use your existing SSH keys for git, uncomment the
 `~/.ssh` volume mount in `docker-compose.yml`. If startup logs show a Chromium sandbox error,
@@ -252,14 +252,55 @@ container** also persists in the volume — install once, keep it forever, add m
 way whenever you like.
 
 **Named volume vs. bind mount:** the default named volume needs no permission setup — it's
-Docker-managed and always matches the container's UID regardless of the host. If you bind-mount a
-real host directory instead, standard POSIX UID/GID matching applies (Docker does not remap
-this): the container's `orca` user is UID/GID 1000:1000 by default, and if that doesn't match the
-host directory's owner, writes fail with `EACCES` — `npm install -g`, `git clone`, writing
-`~/.claude` credentials, all of it. Rebuild with `--build-arg ORCA_UID=$(id -u) --build-arg
-ORCA_GID=$(id -g)` (matching the host user who owns that directory) to fix it. This requires a
-rebuild per host user; there's no runtime remapping here (no `PUID`/`PGID`-at-startup pattern like
-linuxserver.io images use).
+Docker-managed. (One exception: when compose's `user:` override is active, a *fresh* volume still
+initializes with the image's 1000:1000 ownership, so hand it to the runtime UID once — step 2
+below.) If you bind-mount a real host directory instead, standard POSIX UID/GID matching applies
+(Docker does not remap this): the container's `orca` user is UID/GID 1000:1000 by default, and if
+that doesn't match the host directory's owner, writes fail with `EACCES` — `npm install -g`,
+`git clone`, writing `~/.claude` credentials, all of it. Fix it either way: rebuild with
+`--build-arg ORCA_UID=$(id -u) --build-arg ORCA_GID=$(id -g)` matching the host user, or skip the
+rebuild with the compose `user:` override (next section). There is deliberately no
+`PUID`/`PGID`-at-startup pattern (linuxserver.io-style root entrypoint) here — this image never
+executes anything as root.
+
+### Sharing a host folder at `/mnt/projects` (runtime UID override)
+
+`docker-compose.yml` sets `user: "1001:1001"`: the numeric UID/GID of the host user that owns the
+Syncthing-synced projects folder (`dockerApps` — check with `id dockerApps` on the Docker host and
+keep the two in sync). Compose applies `user:` when the container is created, overriding the
+image's `USER orca` with no rebuild. Because bind mounts translate numeric IDs literally:
+
+- Files and folders the container creates under the bind mount are owned by that host user, so the
+  host's Syncthing (running as the same user) keeps full access and the sync works in both
+  directions. New synced content arrives owned by the same UID, so the container can work with it.
+- Git inside the container sees matching owner/UID on `/mnt/projects` repos — no "dubious
+  ownership" rejections.
+- Cosmetic: `whoami`/`id` inside the container can't resolve uid 1001 to a name (the passwd entry
+  is still `orca` = 1000). Harmless — `$HOME` comes from `ORCA_HOME`, npm global installs go to
+  `$HOME/.npm-global` via `NPM_CONFIG_PREFIX`, and nothing in this stack looks the name up.
+
+Setup against an existing deployment is two one-time steps:
+
+```sh
+# 1. In docker-compose.yml, uncomment the /mnt/projects bind mount and set the real
+#    host path (host-specific, deliberately not committed).
+
+# 2. Hand the named volume to the runtime UID — stop the container first.
+docker compose stop headless-orca
+docker run --rm -v orca-data:/data alpine chown -R 1001:1001 /data
+docker compose up -d
+```
+
+Verify:
+
+```sh
+docker compose exec headless-orca id                       # uid=1001 gid=1001
+docker compose exec headless-orca touch /mnt/projects/.write-test
+ls -l /mnt/projects/.write-test                             # on the host: owned by the host user
+```
+
+Rollback is the same steps inverted: remove `user:` from `docker-compose.yml`, `chown -R 1000:1000`
+the volume, `docker compose up -d`.
 
 ## Installing agent CLIs
 

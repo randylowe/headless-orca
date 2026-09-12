@@ -7,6 +7,18 @@ services:
     image: headless-orca
     container_name: headless-orca
     restart: unless-stopped
+    # Run the process as the numeric UID/GID that owns the host's synced projects
+    # folder (`dockerApps` on the Docker host — verify with `id dockerApps` and
+    # keep this line in sync if it ever changes). Bind mounts translate numeric
+    # IDs literally, so anything the container writes into /mnt/projects lands
+    # owned by that user on the host, and the host-side Syncthing (same user)
+    # keeps full access. This overrides the image's `USER orca` (1000:1000) at
+    # container creation — no rebuild needed. Known cosmetic: `whoami`/`id`
+    # inside the container can't resolve a name for uid 1001 (the image's passwd
+    # entry still says orca=1000) — harmless, $HOME comes from ORCA_HOME, not
+    # passwd. After changing this value, chown the orca-data volume once (see
+    # README → Persistence → "Sharing a host folder").
+    user: "1001:1001"
     environment:
       # Address remote Orca clients (desktop/mobile) should dial —
       # your docker host's Tailscale IP, LAN IP, or tunnel hostname.
@@ -18,6 +30,10 @@ services:
       - "6768:6768"
     volumes:
       - orca-data:/home/orca
+      # Host projects folder (the Syncthing-synced tree). The source path is
+      # host-specific, so it's deliberately not committed — set it, then
+      # uncomment:
+      # - /path/on/host/projects:/mnt/projects
       # Uncomment to let agent CLIs use your existing SSH keys for git:
       # - ~/.ssh:/home/orca/.ssh:ro
     # Only uncomment if logs show a Chromium sandbox error, and try without
