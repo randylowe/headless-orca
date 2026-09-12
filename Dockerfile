@@ -158,6 +158,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   git/openssh     -> for any agent CLI you register later to work with repos
 #   curl            -> not needed by orca-ide itself; added for debugging /
 #                      health checks / agent CLIs that shell out to it
+#   sudo            -> not needed by orca-ide either; added so the paired user
+#                      can administer the container (ad-hoc apt installs etc.).
+#                      Passwordless, on purpose — see the sudoers step below.
 #   libatomic1      -> not needed by orca-ide itself either. Added for Pi
 #                      (pi.dev) — its curl-installed build (Bun-compiled) hits
 #                      "libatomic.so.1: cannot open shared object file"
@@ -177,6 +180,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         openssh-client \
+        sudo \
         xvfb \
         libgl1-mesa-dri \
         libgl1 \
@@ -237,6 +241,18 @@ RUN groupadd --gid "${ORCA_GID}" orca \
     && useradd --create-home --home-dir "${ORCA_HOME}" --shell /usr/sbin/nologin \
        --uid "${ORCA_UID}" --gid "${ORCA_GID}" orca \
     && chown -R orca:orca /opt/orca /usr/local
+
+# Passwordless sudo for orca. The account above is created with NO password
+# (locked in shadow), so password-prompted sudo could never succeed — and a
+# prompt would add nothing security-wise: anyone who can pair to this server
+# already has an interactive shell as this exact user. NOPASSWD just makes
+# that shell able to administer the container (apt installs, etc.). Scoped to
+# the container: no docker socket is mounted and the default capability set
+# applies, so this is not host root. visudo -c fails the build on a malformed
+# rule instead of shipping a sudo that can't start.
+RUN echo 'orca ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/orca \
+    && chmod 0440 /etc/sudoers.d/orca \
+    && visudo -c
 
 COPY --chmod=755 entrypoint.sh /opt/orca/entrypoint.sh
 RUN chown orca:orca /opt/orca/entrypoint.sh

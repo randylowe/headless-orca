@@ -219,7 +219,8 @@ Notes:
      an unprivileged `orca` user and `chown -R`s everything to it — this, not loosening mode bits
      the way the upstream systemd guide does, is what makes `squashfs-root` (which
      `--appimage-extract` leaves `drwx------`, unreadable by anyone but the extracting user)
-     readable: by making `orca` the *owner*. Runs as `USER orca`.
+     readable: by making `orca` the *owner*. Also installs `sudo` with a passwordless rule for
+     `orca` (see "Root inside the container (`sudo`)" below). Runs as `USER orca`.
 - **`entrypoint.sh`** — the container's `ENTRYPOINT`. Wraps `AppRun serve`; refuses to start
   without `ORCA_PAIRING_ADDRESS` set (or an explicit opt-out), because a Docker bridge network's
   auto-detected address is almost always the container's internal IP — unreachable from any
@@ -263,8 +264,10 @@ that doesn't match the host directory's owner, writes fail with `EACCES` — `np
 `git clone`, writing `~/.claude` credentials, all of it. Fix it either way: rebuild with
 `--build-arg ORCA_UID=$(id -u) --build-arg ORCA_GID=$(id -g)` matching the host user, or skip the
 rebuild with the compose `user:` override (next section). There is deliberately no
-`PUID`/`PGID`-at-startup pattern (linuxserver.io-style root entrypoint) here — this image never
-executes anything as root.
+`PUID`/`PGID`-at-startup pattern (linuxserver.io-style root entrypoint) here — the image's
+entrypoint never executes anything as root. (The paired user *can* elevate inside the running
+container with passwordless `sudo` — that's a choice made inside the container, not a root
+entrypoint; see "Root inside the container (`sudo`)" below.)
 
 ### Sharing a host folder at `/mnt/projects` (runtime UID override)
 
@@ -333,6 +336,38 @@ curl -fsSL https://pi.dev/install.sh | sh
 All three install under `$HOME` (`/home/orca`), so — same as `npm install -g` in "Persistence"
 above — they persist across container recreation without a rebuild.
 
+## Root inside the container (`sudo`)
+
+The `orca` user has passwordless `sudo`: `sudo -i` from any Orca terminal gives a root shell
+inside the container. It ships that way on purpose — the `orca` account has no password at all
+(so a password prompt could never succeed), and anyone who can pair to this server already has
+an interactive shell as this exact user, so a prompt would add friction, not security.
+
+Two things to know before living in it:
+
+- **OS packages installed this way are ephemeral.** `sudo apt-get install …` writes to the
+  container filesystem, which is wiped on every recreate/rebuild — unlike the agent CLIs and
+  npm globals above, which persist in the `/home/orca` volume. Fine for ad-hoc tools; anything
+  you want to keep belongs in the Dockerfile's package list.
+- **Root breaks the ownership setups in "Persistence" above.** Files created as root under the
+  `/mnt/projects` bind mount land **root-owned on the host**, breaking the host-side Syncthing
+  user's access until you `chown` them back — and a root-owned file in the `orca-data` volume
+  can lock `orca` out entirely. When you only need to *run* one privileged command, prefer
+  `sudo -u orca <command>` (or `sudo <command>` for the single command) over camping in a
+  root shell.
+
+Container root is still container-scoped: no Docker socket is mounted and the default
+capability set applies — root in here is not root on the Docker host. (Host-side,
+`docker compose exec -u root headless-orca bash` also gets you a root shell with no image
+support at all; same trust boundary, just without `sudo` inside.)
+
+**If you use the compose `user:` UID override:** sudo can only run for a UID that exists in the
+image's `/etc/passwd`. Under an override to a UID other than the image's `orca` (e.g.
+`user: "1001:1001"` against a default build, where `orca` is 1000), it fails with
+`sudo: unknown uid 1001, who are you?` — build with `ORCA_UID`/`ORCA_GID` set to match the
+override instead, so the baked-in passwd entry matches. Check which case you're in with `id`
+in an Orca terminal.
+
 ## Installing Orca skills
 
 Orca's agent skills (CLI usage, orchestration, computer use, etc.) are normally installed from
@@ -368,6 +403,29 @@ To refresh already-installed skills, `orca skills update` mirrors the same flags
 ```sh
 orca skills update --all
 ```
+
+## Publishing
+
+`build.sh` is the only publishing path. `./build.sh` resolves the current Orca release from the
+upstream manifest, builds a single-arch image, gates it on a Trivy HIGH/CRITICAL scan, then
+pushes multi-arch to Docker Hub as `v<orca-version>-<rev>` with `latest` floating alongside —
+the revision auto-increments from already-published tags.
+
+To test image changes before publishing, `./build.sh --local` runs the same pipeline — same
+pinned version, same scan gate — and stops before anything touches Docker Hub: no tag lookup,
+no push, no git tag. Run the exact scanned bits locally with a retag + `--no-build` (compose
+uses the default builder, so it can't reuse the script's buildx cache — a plain
+`up --build` would rebuild from scratch instead of running what was scanned):
+
+```sh
+./build.sh --local
+docker tag headless-orca:scan headless-orca
+docker compose up -d --no-build
+```
+
+Publish for real afterwards with plain `./build.sh` — its amd64 half reuses the local build's
+layer cache, so only arm64 compiles fresh. Local builds never affect the revision numbering:
+the counter is derived from tags on Docker Hub, which `--local` doesn't touch.
 
 ## Upgrading
 
@@ -459,6 +517,10 @@ if you see `Orca server ready` with a `Pairing URL`, the container is fine:
   your clients can reach, or set `ORCA_ALLOW_AUTO_ADDRESS=1` if you know what you're doing
   (usually only safe with `--network host`).
 - **Chromium sandbox errors in logs** — uncomment `cap_add: [SYS_ADMIN]` in `docker-compose.yml`.
+- **`sudo: unknown uid 1001, who are you?`** — you're running under a compose `user:` override
+  to a UID that isn't in the image's passwd (`orca` is 1000 in a default build). sudo refuses
+  to run for an unknown UID no matter what the sudoers file says. Fix: build with
+  `ORCA_UID`/`ORCA_GID` matching the override — see "Root inside the container (`sudo`)".
 - **Missing shared library on startup** — re-verify with `ldd`, don't guess: extract the AppImage
   and run `ldd squashfs-root/orca-ide` (the Electron binary is named `orca-ide`, not `orca` —
   `ldd` on a wrong/nonexistent path prints nothing and exits cleanly, which reads as a clean

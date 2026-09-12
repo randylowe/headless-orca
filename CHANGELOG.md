@@ -52,6 +52,13 @@ changelog heading, git tag, and Docker tag are one identifier.
   changelog sections are cut as `## [v<orca-version>-<rev>] - <date>` and
   `build.sh` mirrors each published tag as a git tag on the built commit
   (clean-tree guard), so changelog, git, and Docker Hub share one identifier.
+- Passwordless `sudo` for the `orca` user: `sudo -i` from a paired client
+  gives a root shell inside the container (ad-hoc OS package installs, etc.).
+  `NOPASSWD` is the only workable mode — the account ships with no password at
+  all — and adds no new exposure, since pairing already grants a shell as this
+  user. OS packages installed this way are wiped on container recreate;
+  durable ones belong in the Dockerfile. See README → "Root inside the
+  container (`sudo`)".
 
 ### Changed
 
