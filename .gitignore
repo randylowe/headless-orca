@@ -1,5 +1,7 @@
 .DS_Store
 *.log
+# Syncthing conflict copies — the folder is synced; debris must not reach git
+*.sync-conflict-*
 .env
 .env.*
 
