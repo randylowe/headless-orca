@@ -16,6 +16,9 @@ user-facing doc and the source of truth for how the container behaves.
 - `Dockerfile` — 3-stage, multi-arch build (fetch/extract AppImage → copy Node.js → assemble runtime image).
 - `entrypoint.sh` — the container's ENTRYPOINT; wraps `AppRun serve`.
 - `docker-compose.yml` — the only intended way to build/run this locally.
+- `build.sh` — the only publishing path (resolve Orca version → scan → multi-arch push to Docker Hub).
+- `DOCKERHUB.md` — the Docker Hub README (short user-facing overview; details live in `README.md`).
+- `.trivyignore` — documented, expiring Trivy exceptions. Keep entries dated and justified.
 - `README.md` — user-facing documentation.
 - `CHANGELOG.md` — required on every feature (see below).
 
@@ -58,9 +61,19 @@ Don't relitigate these; they were verified once, the hard way:
 - **`ORCA_PAIRING_ADDRESS` in `docker-compose.yml` is a real LAN IP for this
   deployment** — treat it as environment-specific config, not something to
   genericize away without asking.
-- **`docker-compose.yml` is the only intended build/run path.** Keep it the
-  single, direct path — no templating, multiple compose profiles, or extra
-  abstraction unless actually needed.
+- **`docker-compose.yml` is the only intended local build/run path**, and
+  `build.sh` is the only publishing path — keep both single and direct; no
+  templating, multiple compose profiles, or extra abstraction unless actually
+  needed.
+- **Image tags follow distro-packaging style `v<orca-version>-<rev>`** (e.g.
+  `v1.4.200-1`), with `latest` floating alongside. An image-only change bumps
+  the revision; a new Orca release resets it to `-1`. `build.sh` auto-resolves
+  `ORCA_VERSION` from the upstream electron-builder manifest and
+  auto-increments `WRAPPER_REV` from already-published Docker Hub tags —
+  don't hand-pin tags, and never push a tag that skipped the scan gate.
+- **The Dockerfile's `org.opencontainers.image.version` LABEL and the pushed
+  tag must never disagree** — both `ORCA_VERSION` and `WRAPPER_REV` are passed
+  as build args into the LABEL; if you touch versioning, keep that property.
 - **This is a small, self-contained infra repo — prefer minimal, direct changes
   over adding abstraction** unless genuinely required.
 - **Keep `README.md` in sync.** When a change alters runtime behavior,
@@ -68,5 +81,10 @@ Don't relitigate these; they were verified once, the hard way:
 - **Commit messages follow Conventional Commits** (`feat:`, `fix:`, `docs:`,
   `chore:`, with an optional scope like `feat(compose):`) — match existing
   history.
+- **Publishing is gated on a security scan.** `build.sh` scans the exact bits
+  it will push (single-arch build first, same pinned `ORCA_VERSION`) with
+  Trivy on HIGH/CRITICAL, `--ignore-unfixed` (bookworm-slim always carries
+  some unfixable CVEs — that's deliberate, don't "fix" it by failing on
+  them), with documented exceptions in `.trivyignore`.
 - **`_bmad/` and `_bmad-output/` are local working state** (gitignored) — never
   commit them or treat them as repo source.
